@@ -1,0 +1,25 @@
+{
+    "format_version": 1,
+    "imports": [
+        {
+            "target_table": "sample",
+            "source_data": {
+                "data_type": "CSV",
+                "file_name": "sample.csv",
+                "has_header": true
+            },
+            "column_mappings": {
+                "id": 1,
+                "quantity_raw": 2,
+                "quantity": 3
+            },
+            "import_settings": {
+                "import_columns": [
+                    "id",
+                    "quantity_raw",
+                    "quantity"
+                ]
+            }
+        }
+    ]
+}

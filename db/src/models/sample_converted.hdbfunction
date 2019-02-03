@@ -1,0 +1,88 @@
+FUNCTION "sample_converted" ()
+	RETURNS TABLE (
+		"id" integer,
+		"quantity_raw" varbinary(16),
+		"quantity" decimal,
+		"quantity_converted" decimal
+	)
+	LANGUAGE SQLSCRIPT
+	SQL SECURITY DEFINER
+	AS
+BEGIN
+/**
+ * DF34_RAW conversion example
+ *
+ * DF34_RAW is a 128-bit decimal floating point value. It is a native ABAP data type.
+ * 128-bit decimal can represent numbers from  ±0000000000000000000000000000000000×10^−6176 to ±9999999999999999999999999999999999×10^6111
+ * the value is built up of following bits:
+ * s	mmmmmmmmmmmmmmmmm	cccccccccc cccccccccc cccccccccc cccccccccc cccccccccc cccccccccc cccccccccc ccccccccc cccccccccc cccccccccc ccccccccccc
+ * sign	combination			significand continuation, split over 11 declets of 10 bits each
+ * 
+ * Each declet can be read as an integer with maximum value of 999. For negative values it is 999 - value.
+ * The combination-part contains both the Exponent value as well as the Most Significant Digit.
+ * Read the combination as an integer.
+ *   - postive values run from 1 to 123209
+ *   - negative values run from 123238 to 30
+ * 	The first digit of the combination gives the Most Significant digit. Take modulo of 10 for Postive values. For negative values, take 9 - mod(value, 10)
+ * 
+ *	The remaining digits of the combination denote the Exponent value.
+ *  to get into form of -6176 to +6111:
+ *   - for positive: subtract value by 61760 and divide by 10
+ *   - for negative: subtract 61479 by value and divide by 10
+ * The Decimal value can then be calculated as: MostSignificantDigit . Decimals * 10^Exponent
+ */
+
+	sample_split = select *
+		,substr(bintohex(bitand("quantity_raw", x'80000000000000000000000000000000')), 1, 1) as signByte
+		-- combined parts:
+		,lpad(substr(bintohex(bitand("quantity_raw", x'7f000000000000000000000000000000')), 1, 2), 3, '0') as c1
+		,substr(bintohex(bitand("quantity_raw", x'00ffc000000000000000000000000000')), 3, 3) as c2
+		-- declet parts:
+		,substr(bintohex(bitand("quantity_raw", x'00003ff0000000000000000000000000')), 5, 3) as a1
+		,substr(bintohex(bitand("quantity_raw", x'0000000ffc0000000000000000000000')), 8, 3) as b2
+		,substr(bintohex(bitand("quantity_raw", x'0000000003ff00000000000000000000')),10, 3) as a3
+		,substr(bintohex(bitand("quantity_raw", x'000000000000ffc00000000000000000')),13, 3) as b4
+		,substr(bintohex(bitand("quantity_raw", x'000000000000003ff000000000000000')),15, 3) as a5
+		,substr(bintohex(bitand("quantity_raw", x'00000000000000000ffc000000000000')),18, 3) as b6
+		,substr(bintohex(bitand("quantity_raw", x'00000000000000000003ff0000000000')),20, 3) as a7
+		,substr(bintohex(bitand("quantity_raw", x'0000000000000000000000ffc0000000')),23, 3) as b8
+		,substr(bintohex(bitand("quantity_raw", x'0000000000000000000000003ff00000')),25, 3) as a9
+		,substr(bintohex(bitand("quantity_raw", x'000000000000000000000000000ffc00')),28, 3) as b10
+		,substr(bintohex(bitand("quantity_raw", x'000000000000000000000000000003ff')),30, 3) as a11
+	from "sample";
+	
+	sample_join = select s.*
+		,case s.signByte when '8' then '+' else '-' end as signPart
+		,case s.signByte when '8' then mod(to_int(dc1."number" || dc2."number"), 10) else 9 - mod(to_int(dc1."number" || dc2."number"), 10) end as mostSignificantDigit
+		,(d1."number" || d2."number" || d3."number" || d4."number" || d5."number" || d6."number" || d7."number" || d8."number" || d9."number" || d10."number" || d11."number" || d1."number") as decimals
+		,case s.signByte when '8' then floor( (to_int(dc1."number" || dc2."number") - 61760) / 10) else floor((61479 - to_int(dc1."number" || dc2."number")) / 10) end as exponent
+	from :sample_split s
+	-- we're using a lookup table to convert hexadecimal value to integer. The lookup table has a range of 0-999
+	-- some of our pieces are 2 bits misaligned. This shift has been included in the lookup table.
+	left outer many to one join "declets" dc1 on(s.c1 = dc1."declet" and dc1."sign" = '8' and dc1."shift" = 0)
+	left outer many to one join "declets" dc2 on(s.c2 = dc2."declet" and dc2."sign" = '8' and dc2."shift" = 2)
+	
+	left outer many to one join "declets" d1 on(s.a1 = d1."declet" and d1."sign" = s.signByte and d1."shift" = 0)
+	left outer many to one join "declets" d2 on(s.b2 = d2."declet" and d2."sign" = s.signByte and d2."shift" = 2)
+	left outer many to one join "declets" d3 on(s.a3 = d3."declet" and d3."sign" = s.signByte and d3."shift" = 0)
+	left outer many to one join "declets" d4 on(s.b4 = d4."declet" and d4."sign" = s.signByte and d4."shift" = 2)
+	left outer many to one join "declets" d5 on(s.a5 = d5."declet" and d5."sign" = s.signByte and d5."shift" = 0)
+	left outer many to one join "declets" d6 on(s.b6 = d6."declet" and d6."sign" = s.signByte and d6."shift" = 2)
+	left outer many to one join "declets" d7 on(s.a7 = d7."declet" and d7."sign" = s.signByte and d7."shift" = 0)
+	left outer many to one join "declets" d8 on(s.b8 = d8."declet" and d8."sign" = s.signByte and d8."shift" = 2)
+	left outer many to one join "declets" d9 on(s.a9 = d9."declet" and d9."sign" = s.signByte and d9."shift" = 0)
+	left outer many to one join "declets" d10 on(s.b10 = d10."declet" and d10."sign" = s.signByte and d10."shift" = 2)
+	left outer many to one join "declets" d11 on(s.a11 = d11."declet" and d11."sign" = s.signByte and d11."shift" = 0);
+
+	return select
+		 "id"
+		,"quantity_raw"
+		,"quantity"
+		,case "quantity_raw" when x'80000000000000000000000000000000' then
+			to_decimal(0)
+		else
+			to_decimal(signPart || mostSignificantDigit || '.' || decimals || 'e' || exponent)
+		end as "quantity_converted"
+	from :sample_join;
+
+end;

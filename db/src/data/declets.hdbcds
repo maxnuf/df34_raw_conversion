@@ -1,0 +1,6 @@
+entity declets {
+	key declet: String(3);
+	key sign: String(1);
+	key shift: hana.TINYINT;
+	number: String(3);
+};

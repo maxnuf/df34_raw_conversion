@@ -1,0 +1,27 @@
+{
+    "format_version": 1,
+    "imports": [
+        {
+            "target_table": "declets",
+            "source_data": {
+                "data_type": "CSV",
+                "file_name": "declets.csv",
+                "has_header": true
+            },
+            "column_mappings": {
+                "declet": 1,
+                "sign": 2,
+                "shift": 3,
+                "number": 4
+            },
+            "import_settings": {
+                "import_columns": [
+                    "declet",
+                    "sign",
+                    "shift",
+                    "number"
+                ]
+            }
+        }
+    ]
+}

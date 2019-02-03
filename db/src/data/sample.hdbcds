@@ -1,0 +1,5 @@
+entity sample {
+	key id: Integer;
+	quantity_raw: Binary(16);
+	quantity: DecimalFloat;
+}
